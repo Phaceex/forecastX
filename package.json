@@ -1,0 +1,27 @@
+{
+  "name": "forecastx",
+  "version": "1.0.0",
+  "description": "TxLINE World Cup Free Tier integration",
+  "main": "dist/index.js",
+  "scripts": {
+    "setup-wallet": "ts-node src/setup-wallet.ts",
+    "subscribe-free": "ts-node src/subscribe-free.ts",
+    "activate-token": "ts-node src/activate-token.ts",
+    "test-api": "ts-node src/test-api.ts",
+    "test-stream": "ts-node src/test-stream.ts",
+    "test-onchain-validate": "ts-node src/test-onchain-validate.ts"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "^0.30.1",
+    "@solana/spl-token": "^0.4.8",
+    "@solana/web3.js": "^1.95.3",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5",
+    "tweetnacl": "^1.0.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.9",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.2"
+  }
+}
