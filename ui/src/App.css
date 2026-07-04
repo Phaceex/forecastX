@@ -1,0 +1,49 @@
+.app-shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(37, 99, 235, 0.12) 0%, transparent 60%),
+    radial-gradient(ellipse 60% 40% at 80% 80%, rgba(29, 78, 216, 0.08) 0%, transparent 50%),
+    var(--bg-primary);
+}
+
+.app-main {
+  flex: 1;
+}
+
+.app-footer {
+  border-top: 1px solid rgba(59, 130, 246, 0.1);
+  padding: 20px 24px;
+  margin-top: auto;
+}
+
+.footer-inner {
+  max-width: 1400px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: #4a7aaa;
+}
+
+.footer-brand {
+  font-weight: 600;
+  color: #94b4d4;
+}
+
+.footer-sep {
+  color: rgba(74, 122, 170, 0.4);
+}
+
+.footer-chain {
+  color: #4a7aaa;
+}
+
+.footer-link {
+  color: #60a5fa;
+  text-decoration: none;
+  font-weight: 600;
+}
+.footer-link:hover { text-decoration: underline; }

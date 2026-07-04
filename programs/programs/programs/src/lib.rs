@@ -1,5 +1,6 @@
 use anchor_lang::prelude::*;
 use anchor_spl::token::{self, Mint, Token, TokenAccount, Transfer, MintTo, Burn};
+use anchor_spl::associated_token::AssociatedToken;
 use anchor_lang::solana_program::instruction::{Instruction, AccountMeta};
 use std::str::FromStr;
 
@@ -435,6 +436,18 @@ pub mod programs {
         Ok(())
     }
 
+    pub fn close_market(ctx: Context<CloseMarket>) -> Result<()> {
+        let dest_starting_lamports = ctx.accounts.authority.lamports();
+        **ctx.accounts.authority.lamports.borrow_mut() = dest_starting_lamports
+            .checked_add(ctx.accounts.market.lamports())
+            .unwrap();
+        **ctx.accounts.market.lamports.borrow_mut() = 0;
+        
+        let mut source_data = ctx.accounts.market.data.borrow_mut();
+        source_data.fill(0);
+        Ok(())
+    }
+
     pub fn mint_complete_set(
         ctx: Context<MintCompleteSet>,
         amount: u64,
@@ -772,325 +785,6 @@ pub mod programs {
         Ok(())
     }
 
-    // pub fn swap(
-    //     ctx: Context<Swap>,
-    //     swap_type: u8,
-    //     amount_in: u64,
-    //     min_amount_out: u64,
-    // ) -> Result<()> {
-    //     let yes_reserve_amount = ctx.accounts.yes_reserve.amount;
-    //     let no_reserve_amount = ctx.accounts.no_reserve.amount;
-
-    //     // Signer seeds for market
-    //     let fixture_id_bytes = ctx.accounts.market.fixture_id.to_le_bytes();
-    //     let stat_key_bytes = ctx.accounts.market.stat_key.to_le_bytes();
-    //     let market_signer_seeds = &[
-    //         b"market",
-    //         fixture_id_bytes.as_ref(),
-    //         stat_key_bytes.as_ref(),
-    //         &[ctx.accounts.market.bump],
-    //     ];
-    //     let market_signer = &[&market_signer_seeds[..]];
-
-    //     // Signer seeds for pool
-    //     let market_key = ctx.accounts.market.key();
-    //     let pool_signer_seeds = &[
-    //         b"pool",
-    //         market_key.as_ref(),
-    //         &[ctx.accounts.pool.bump],
-    //     ];
-    //     let pool_signer = &[&pool_signer_seeds[..]];
-
-    //     match swap_type {
-    //         0 => {
-    //             // USDC -> YES
-    //             // 1. Transfer USDC from user to vault
-    //             let cpi_accounts = Transfer {
-    //                 from: ctx.accounts.user_collateral.to_account_info(),
-    //                 to: ctx.accounts.vault.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
-    //             token::transfer(cpi_ctx, amount_in)?;
-
-    //             // 2. Mint YES & NO complete sets to user (YES) and pool reserves (NO)
-    //             let cpi_accounts_yes = MintTo {
-    //                 mint: ctx.accounts.yes_mint.to_account_info(),
-    //                 to: ctx.accounts.user_yes.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_yes = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_yes,
-    //                 market_signer,
-    //             );
-    //             token::mint_to(cpi_ctx_yes, amount_in)?;
-
-    //             let cpi_accounts_no = MintTo {
-    //                 mint: ctx.accounts.no_mint.to_account_info(),
-    //                 to: ctx.accounts.no_reserve.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_no = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_no,
-    //                 market_signer,
-    //             );
-    //             token::mint_to(cpi_ctx_no, amount_in)?;
-
-    //             // 3. Swap NO for YES
-    //             let dy = amount_in as u128;
-    //             let dy_fee_adjusted = dy * 997 / 1000;
-    //             let x = yes_reserve_amount as u128;
-    //             let y = no_reserve_amount as u128;
-    //             let dx = x * dy_fee_adjusted / (y + dy_fee_adjusted);
-
-    //             require!(dx >= min_amount_out as u128, ErrorCode::SlippageExceeded);
-
-    //             // Transfer dx YES from yes_reserve to user_yes
-    //             let cpi_accounts_swap = Transfer {
-    //                 from: ctx.accounts.yes_reserve.to_account_info(),
-    //                 to: ctx.accounts.user_yes.to_account_info(),
-    //                 authority: ctx.accounts.pool.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap,
-    //                 pool_signer,
-    //             );
-    //             token::transfer(cpi_ctx_swap, dx as u64)?;
-
-    //             // Update k
-    //             ctx.accounts.pool.k = (yes_reserve_amount - dx as u64) as u128
-    //                 * (no_reserve_amount + amount_in) as u128;
-
-    //             msg!("Swapped {} USDC for {} YES", amount_in, amount_in + dx as u64);
-    //         }
-    //         1 => {
-    //             // USDC -> NO
-    //             // 1. Transfer USDC from user to vault
-    //             let cpi_accounts = Transfer {
-    //                 from: ctx.accounts.user_collateral.to_account_info(),
-    //                 to: ctx.accounts.vault.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx = CpiContext::new(ctx.accounts.token_program.key(), cpi_accounts);
-    //             token::transfer(cpi_ctx, amount_in)?;
-
-    //             // 2. Mint YES & NO complete sets to pool reserves (YES) and user (NO)
-    //             let cpi_accounts_yes = MintTo {
-    //                 mint: ctx.accounts.yes_mint.to_account_info(),
-    //                 to: ctx.accounts.yes_reserve.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_yes = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_yes,
-    //                 market_signer,
-    //             );
-    //             token::mint_to(cpi_ctx_yes, amount_in)?;
-
-    //             let cpi_accounts_no = MintTo {
-    //                 mint: ctx.accounts.no_mint.to_account_info(),
-    //                 to: ctx.accounts.user_no.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_no = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_no,
-    //                 market_signer,
-    //             );
-    //             token::mint_to(cpi_ctx_no, amount_in)?;
-
-    //             // 3. Swap YES for NO
-    //             let dx = amount_in as u128;
-    //             let dx_fee_adjusted = dx * 997 / 1000;
-    //             let x = yes_reserve_amount as u128;
-    //             let y = no_reserve_amount as u128;
-    //             let dy = y * dx_fee_adjusted / (x + dx_fee_adjusted);
-
-    //             require!(dy >= min_amount_out as u128, ErrorCode::SlippageExceeded);
-
-    //             // Transfer dy NO from no_reserve to user_no
-    //             let cpi_accounts_swap = Transfer {
-    //                 from: ctx.accounts.no_reserve.to_account_info(),
-    //                 to: ctx.accounts.user_no.to_account_info(),
-    //                 authority: ctx.accounts.pool.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap,
-    //                 pool_signer,
-    //             );
-    //             token::transfer(cpi_ctx_swap, dy as u64)?;
-
-    //             // Update k
-    //             ctx.accounts.pool.k = (yes_reserve_amount + amount_in) as u128
-    //                 * (no_reserve_amount - dy as u64) as u128;
-
-    //             msg!("Swapped {} USDC for {} NO", amount_in, amount_in + dy as u64);
-    //         }
-    //         2 => {
-    //             // YES -> USDC
-    //             let da = solve_sell_quadratic(yes_reserve_amount, no_reserve_amount, amount_in);
-    //             require!(da > 0 && da < amount_in, ErrorCode::InvalidAmount);
-
-    //             let db = amount_in - da;
-
-    //             // 1. Transfer `da` YES to pool's yes_reserve
-    //             let cpi_accounts_swap_yes = Transfer {
-    //                 from: ctx.accounts.user_yes.to_account_info(),
-    //                 to: ctx.accounts.yes_reserve.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap_yes = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap_yes,
-    //             );
-    //             token::transfer(cpi_ctx_swap_yes, da)?;
-
-    //             // 2. Withdraw `db` NO from pool's no_reserve
-    //             let cpi_accounts_swap_no = Transfer {
-    //                 from: ctx.accounts.no_reserve.to_account_info(),
-    //                 to: ctx.accounts.user_no.to_account_info(),
-    //                 authority: ctx.accounts.pool.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap_no = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap_no,
-    //                 pool_signer,
-    //             );
-    //             token::transfer(cpi_ctx_swap_no, db)?;
-
-    //             // 3. Burn the `db` YES and `db` NO complete sets
-    //             // Burn YES
-    //             let cpi_accounts_burn_yes = Burn {
-    //                 mint: ctx.accounts.yes_mint.to_account_info(),
-    //                 from: ctx.accounts.user_yes.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_burn_yes = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_burn_yes,
-    //             );
-    //             token::burn(cpi_ctx_burn_yes, db)?;
-
-    //             // Burn NO
-    //             let cpi_accounts_burn_no = Burn {
-    //                 mint: ctx.accounts.no_mint.to_account_info(),
-    //                 from: ctx.accounts.user_no.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_burn_no = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_burn_no,
-    //             );
-    //             token::burn(cpi_ctx_burn_no, db)?;
-
-    //             // 4. Transfer `db` USDC from vault to user
-    //             let cpi_accounts_usdc = Transfer {
-    //                 from: ctx.accounts.vault.to_account_info(),
-    //                 to: ctx.accounts.user_collateral.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_usdc = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_usdc,
-    //                 market_signer,
-    //             );
-    //             token::transfer(cpi_ctx_usdc, db)?;
-
-    //             require!(db >= min_amount_out, ErrorCode::SlippageExceeded);
-
-    //             // Update k
-    //             ctx.accounts.pool.k = (yes_reserve_amount + da) as u128
-    //                 * (no_reserve_amount - db) as u128;
-
-    //             msg!("Swapped {} YES for {} USDC", amount_in, db);
-    //         }
-    //         3 => {
-    //             // NO -> USDC
-    //             let da = solve_sell_quadratic(no_reserve_amount, yes_reserve_amount, amount_in);
-    //             require!(da > 0 && da < amount_in, ErrorCode::InvalidAmount);
-
-    //             let db = amount_in - da;
-
-    //             // 1. Transfer `da` NO to pool's no_reserve
-    //             let cpi_accounts_swap_no = Transfer {
-    //                 from: ctx.accounts.user_no.to_account_info(),
-    //                 to: ctx.accounts.no_reserve.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap_no = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap_no,
-    //             );
-    //             token::transfer(cpi_ctx_swap_no, da)?;
-
-    //             // 2. Withdraw `db` YES from pool's yes_reserve
-    //             let cpi_accounts_swap_yes = Transfer {
-    //                 from: ctx.accounts.yes_reserve.to_account_info(),
-    //                 to: ctx.accounts.user_yes.to_account_info(),
-    //                 authority: ctx.accounts.pool.to_account_info(),
-    //             };
-    //             let cpi_ctx_swap_yes = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_swap_yes,
-    //                 pool_signer,
-    //             );
-    //             token::transfer(cpi_ctx_swap_yes, db)?;
-
-    //             // 3. Burn the `db` YES and `db` NO complete sets
-    //             // Burn YES
-    //             let cpi_accounts_burn_yes = Burn {
-    //                 mint: ctx.accounts.yes_mint.to_account_info(),
-    //                 from: ctx.accounts.user_yes.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_burn_yes = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_burn_yes,
-    //             );
-    //             token::burn(cpi_ctx_burn_yes, db)?;
-
-    //             // Burn NO
-    //             let cpi_accounts_burn_no = Burn {
-    //                 mint: ctx.accounts.no_mint.to_account_info(),
-    //                 from: ctx.accounts.user_no.to_account_info(),
-    //                 authority: ctx.accounts.authority.to_account_info(),
-    //             };
-    //             let cpi_ctx_burn_no = CpiContext::new(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_burn_no,
-    //             );
-    //             token::burn(cpi_ctx_burn_no, db)?;
-
-    //             // 4. Transfer `db` USDC from vault to user
-    //             let cpi_accounts_usdc = Transfer {
-    //                 from: ctx.accounts.vault.to_account_info(),
-    //                 to: ctx.accounts.user_collateral.to_account_info(),
-    //                 authority: ctx.accounts.market.to_account_info(),
-    //             };
-    //             let cpi_ctx_usdc = CpiContext::new_with_signer(
-    //                 ctx.accounts.token_program.key(),
-    //                 cpi_accounts_usdc,
-    //                 market_signer,
-    //             );
-    //             token::transfer(cpi_ctx_usdc, db)?;
-
-    //             require!(db >= min_amount_out, ErrorCode::SlippageExceeded);
-
-    //             // Update k
-    //             ctx.accounts.pool.k = (yes_reserve_amount - db) as u128
-    //                 * (no_reserve_amount + da) as u128;
-
-    //             msg!("Swapped {} NO for {} USDC", amount_in, db);
-    //         }
-    //         _ => return err!(ErrorCode::InvalidSwapType),
-    //     }
-
-    //     Ok(())
-    // }
     pub fn swap(
         ctx: Context<Swap>,
         swap_type: u8,
@@ -1156,7 +850,10 @@ pub mod programs {
 
         anchor_lang::solana_program::program::invoke(
             &ix,
-            &[ctx.accounts.daily_scores_merkle_roots.to_account_info()],
+            &[ctx.accounts.daily_scores_merkle_roots.to_account_info(),
+             ctx.accounts.txline_program.to_account_info(),
+             ],
+           
         )?;
 
         let (key, return_data) = anchor_lang::solana_program::program::get_return_data()
@@ -1425,7 +1122,12 @@ pub struct InitPool<'info> {
     #[account(mut)]
     pub user_collateral: Box<Account<'info, TokenAccount>>,
 
-    #[account(mut)]
+    #[account(
+        init,
+        payer = authority,
+        associated_token::mint = lp_mint,
+        associated_token::authority = authority,
+    )]
     pub user_lp: Box<Account<'info, TokenAccount>>,
 
     #[account(mut)]
@@ -1433,6 +1135,7 @@ pub struct InitPool<'info> {
 
     pub system_program: Program<'info, System>,
     pub token_program: Program<'info, Token>,
+    pub associated_token_program: Program<'info, AssociatedToken>,
     pub rent: Sysvar<'info, Rent>,
 }
 
@@ -1559,6 +1262,10 @@ pub struct ResolveMarket<'info> {
     /// CHECK: Daily Merkle roots account of TxLINE
     pub daily_scores_merkle_roots: AccountInfo<'info>,
 
+    /// CHECK: constrained to TxLINE's known program address below
+    #[account(address = Pubkey::from_str("6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J").unwrap())]
+    pub txline_program: AccountInfo<'info>,
+
     #[account(mut)]
     pub authority: Signer<'info>,
 }
@@ -1584,6 +1291,15 @@ pub struct Redeem<'info> {
 
     pub authority: Signer<'info>,
     pub token_program: Program<'info, Token>,
+}
+
+#[derive(Accounts)]
+pub struct CloseMarket<'info> {
+    /// CHECK: This is the market account we want to close
+    #[account(mut)]
+    pub market: AccountInfo<'info>,
+    #[account(mut)]
+    pub authority: Signer<'info>,
 }
 
 #[error_code]

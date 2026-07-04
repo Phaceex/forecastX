@@ -9,7 +9,8 @@
     "activate-token": "ts-node src/activate-token.ts",
     "test-api": "ts-node src/test-api.ts",
     "test-stream": "ts-node src/test-stream.ts",
-    "test-onchain-validate": "ts-node src/test-onchain-validate.ts"
+    "test-onchain-validate": "ts-node src/test-onchain-validate.ts",
+    "test-complete-flow": "ts-node src/run-complete-test.ts"
   },
   "dependencies": {
     "@coral-xyz/anchor": "^0.30.1",
