@@ -2,7 +2,8 @@ import { useState, useEffect, useCallback } from 'react';
 import { useConnection } from '@solana/wallet-adapter-react';
 import { PublicKey } from '@solana/web3.js';
 import { BN } from '@coral-xyz/anchor';
-import { PROGRAM_ID, WORLD_CUP_FIXTURES, Fixture } from '../config';
+import { PROGRAM_ID } from '../config';
+import type { Fixture } from '../config';
 
 export interface MarketInfo {
   fixture: Fixture;
@@ -17,13 +18,11 @@ export interface MarketInfo {
   exists: boolean;
   resolved: boolean;
   winningOutcome: number;
-  // AMM data
   yesPrice: number;
   noPrice: number;
   yesReserveAmt: number;
   noReserveAmt: number;
   totalLiquidity: number;
-  // Derived from vault
   vaultBalance: number;
 }
 
@@ -77,7 +76,7 @@ function deriveMarketPdas(fixtureId: number, statKey: number) {
   };
 }
 
-export function useMarkets() {
+export function useMarkets(fixtures: Fixture[]) {
   const { connection } = useConnection();
   const [markets, setMarkets] = useState<MarketInfo[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,7 +85,7 @@ export function useMarkets() {
     setLoading(true);
     const results: MarketInfo[] = [];
 
-    for (const fixture of WORLD_CUP_FIXTURES) {
+    for (const fixture of fixtures) {
       const pdas = deriveMarketPdas(fixture.id, fixture.statKey);
 
       let exists = false;
@@ -103,8 +102,6 @@ export function useMarkets() {
         const accountInfo = await connection.getAccountInfo(new PublicKey(pdas.marketPda));
         if (accountInfo && accountInfo.data.length >= 12) {
           exists = true;
-          // Parse market account data (after 8-byte discriminator)
-          // fixture_id: u64 (8 bytes), stat_key: u16 (2), resolved: bool (1), winning_outcome: u8 (1)
           const data = accountInfo.data;
           resolved = data[18] === 1;
           winningOutcome = data[19];
@@ -152,7 +149,7 @@ export function useMarkets() {
 
     setMarkets(results);
     setLoading(false);
-  }, [connection]);
+  }, [connection, fixtures]);
 
   useEffect(() => {
     fetchMarkets();

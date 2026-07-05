@@ -1,7 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { MarketInfo } from '../hooks/useMarkets';
+import type { MarketInfo } from '../hooks/useMarkets';
 import PriceChart from './PriceChart';
 import './MarketCard.css';
 
