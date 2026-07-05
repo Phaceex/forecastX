@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { WalletContextProvider } from './WalletProvider';
 import Navbar from './components/Navbar';

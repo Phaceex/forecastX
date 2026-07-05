@@ -182,7 +182,7 @@ import { getAssociatedTokenAddressSync } from '@solana/spl-token';
 import { PublicKey } from '@solana/web3.js';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { PROGRAM_ID, COLLATERAL_MINT } from '../config';
+import { COLLATERAL_MINT } from '../config';
 import type { MarketInfo } from '../hooks/useMarkets';
 import './PortfolioPage.css';
 

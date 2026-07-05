@@ -1,5 +1,5 @@
 import axios from "axios";
-import { TXLINE_API_ORIGIN, WORLD_CUP_COMPETITION_ID } from "../config";
+import { TXLINE_API_ORIGIN } from "../config";
 
 export interface TxLineFixture {
     Ts: number;
