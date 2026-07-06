@@ -72,6 +72,102 @@ export async function fetchScoreUpdates(
     return res.data;
 }
 
+export interface OddsUpdate {
+    FixtureId: number;
+    MessageId: string;
+    Ts: number;
+    Bookmaker: string;
+    BookmakerId: number;
+    SuperOddsType: string;
+    InRunning: boolean;
+    GameState: string | null;
+    MarketParameters: string | null;
+    MarketPeriod: string | null;
+    PriceNames: string[];
+    Prices: number[];
+    Pct: string[];
+}
+
+export async function fetchOddsUpdates(
+    fixtureId: number,
+    jwt: string,
+    apiToken: string,
+    network: "mainnet" | "devnet" = "devnet"
+): Promise<OddsUpdate[]> {
+    const res = await axios.get(`${TXLINE_API_ORIGIN[network]}/api/odds/updates/${fixtureId}`, {
+        headers: { Authorization: `Bearer ${jwt}`, "X-Api-Token": apiToken },
+    });
+    return res.data;
+}
+
+export function streamScoreUpdates(
+    fixtureId: number,
+    jwt: string,
+    apiToken: string,
+    onUpdate: (data: any) => void,
+    onError: (err: any) => void,
+    network: "mainnet" | "devnet" = "devnet"
+): () => void {
+    const controller = new AbortController();
+    const url = `${TXLINE_API_ORIGIN[network]}/api/scores/stream?fixtureId=${fixtureId}`;
+
+    const runStream = async () => {
+        try {
+            const response = await fetch(url, {
+                headers: {
+                    Authorization: `Bearer ${jwt}`,
+                    "X-Api-Token": apiToken,
+                    Accept: "text/event-stream",
+                },
+                signal: controller.signal,
+            });
+
+            if (!response.ok || !response.body) {
+                throw new Error(`Stream connection failed: ${response.status} ${response.statusText}`);
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder("utf-8");
+            let buffer = "";
+
+            while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+
+                buffer += decoder.decode(value, { stream: true });
+                const lines = buffer.split("\n");
+                buffer = lines.pop() || "";
+
+                for (const line of lines) {
+                    const trimmed = line.trim();
+                    if (!trimmed) continue;
+                    let jsonStr = trimmed;
+                    if (trimmed.startsWith("data:")) {
+                        jsonStr = trimmed.slice(5).trim();
+                    }
+                    try {
+                        const payload = JSON.parse(jsonStr);
+                        onUpdate(payload);
+                    } catch (e) {
+                        // ignore non-JSON updates
+                    }
+                }
+            }
+        } catch (err: any) {
+            if (err.name !== "AbortError") {
+                onError(err);
+            }
+        }
+    };
+
+    runStream();
+
+    return () => {
+        controller.abort();
+    };
+}
+
+
 const LIVE_STATES = new Set(['H1', 'HT', 'H2', 'ET1', 'ET2', 'P', 'PE']);
 const FINISHED_STATES = new Set(['F', 'END', 'WET', 'WPE', 'A', 'C']);
 

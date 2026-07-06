@@ -10,6 +10,7 @@ import { motion } from 'framer-motion';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip, CartesianGrid } from 'recharts';
 import { PROGRAM_ID, COLLATERAL_MINT } from '../config';
 import idl from '../idl/programs.json';
+import { useLiveOdds } from '../hooks/useLiveOdds';
 import './TradingPage.css';
 import type { MarketInfo } from '../hooks/useMarkets';
 
@@ -53,6 +54,9 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
   const market = markets.find(m => m.fixture.id === Number(fixtureId));
   const fixture = market?.fixture;
   const pdas = fixture ? deriveAll(fixture.id, fixture.statKey) : null;
+  const [jwt] = useState<string | null>(import.meta.env.VITE_TXLINE_JWT ?? null);
+  const [apiToken] = useState<string | null>(import.meta.env.VITE_TXLINE_API_TOKEN ?? null);
+  const { parsedMarkets, loading: oddsLoading } = useLiveOdds(fixture?.id, jwt, apiToken);
   const [tab, setTab] = useState<'buy-yes' | 'buy-no' | 'sell-yes' | 'sell-no'>('buy-yes');
   const [amount, setAmount] = useState('');
   const [slippage, setSlippage] = useState(2);
@@ -279,6 +283,80 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
               </AreaChart>
             </ResponsiveContainer>
           </div>
+
+          {/* Live Bookmaker Odds */}
+          {fixture && (
+            <div className="tp-live-odds glass-card">
+              <div className="tplo-header">
+                <span className="tplo-title">
+                  <span className="tplo-live-dot" /> Live Bookmaker Odds (De-margined)
+                </span>
+                {oddsLoading && <span className="spinner" style={{ width: 12, height: 12 }} />}
+              </div>
+              <div className="tplo-grids">
+                {/* Match Winner 1X2 */}
+                {parsedMarkets['1X2'] && (
+                  <div className="tplo-market-section">
+                    <div className="tploms-title">Match Winner (1X2)</div>
+                    <div className="tploms-grid">
+                      {parsedMarkets['1X2'].outcomes.map((out, idx) => {
+                        const nameMap: Record<string, string> = {
+                          part1: fixture.homeCode,
+                          draw: 'DRAW',
+                          part2: fixture.awayCode
+                        };
+                        return (
+                          <div key={idx} className="tplo-outcome">
+                            <span className="tploo-name">{nameMap[out.name] || out.name}</span>
+                            <span className="tploo-odds">{out.price.toFixed(2)}</span>
+                            <span className="tploo-prob">{out.probability.toFixed(1)}%</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Over/Under Goals */}
+                {Object.values(parsedMarkets)
+                  .filter(m => m.type === 'OVERUNDER')
+                  .map((m, idx) => (
+                    <div key={idx} className="tplo-market-section">
+                      <div className="tploms-title">Goals {m.line?.replace('line=', '') || 'Total'}</div>
+                      <div className="tploms-grid">
+                        {m.outcomes.map((out, oIdx) => (
+                          <div key={oIdx} className="tplo-outcome">
+                            <span className="tploo-name">{out.name}</span>
+                            <span className="tploo-odds">{out.price.toFixed(2)}</span>
+                            <span className="tploo-prob">{out.probability.toFixed(1)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+
+                {/* If no odds available yet */}
+                {!parsedMarkets['1X2'] && Object.values(parsedMarkets).filter(m => m.type === 'OVERUNDER').length === 0 && (
+                  <div style={{ textAlign: 'center', color: '#4a7aaa', fontSize: 13, padding: '12px 0' }}>
+                    {oddsLoading ? 'Loading bookmaker price feed...' : 'No live odds updates available for this fixture.'}
+                  </div>
+                )}
+
+                {/* Arbitrage Info */}
+                {market && market.exists && (
+                  <div className="tplo-arbitrage">
+                    <div className="tploa-info">
+                      <span className="tploa-title">On-Chain vs Bookmaker</span>
+                      <span className="tploa-desc">
+                        AMM YES Price: <b>{(market.yesPrice * 100).toFixed(1)}¢</b> | NO Price: <b>{(market.noPrice * 100).toFixed(1)}¢</b>
+                      </span>
+                    </div>
+                    <span className="tploa-badge">Live Index</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Market status */}
           <div className="tp-market-status glass-card">
