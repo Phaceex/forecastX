@@ -6,7 +6,11 @@ type LiveState = { status: Fixture['status']; score: { home: number; away: numbe
 
 export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken: string | null) {
     const [scores, setScores] = useState<Record<number, LiveState>>({});
-    const streamsRef = useRef<Record<number, { abort: () => void; retryCount: number }>>({});
+    const streamsRef = useRef<Record<number, { 
+        abort: () => void; 
+        retryCount: number; 
+        pollInterval: NodeJS.Timeout | null;
+    }>>({});
 
     useEffect(() => {
         if (!jwt || !apiToken || fixtures.length === 0) return;
@@ -21,14 +25,30 @@ export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken:
             try {
                 const list = await fetchScoreUpdates(f.id, jwt, apiToken);
                 if (list.length > 0) {
+                    const isFinalised = list.some(x => 
+                        x.Action === 'game_finalised' || 
+                        x.StatusId === 100 || 
+                        x.action === 'game_finalised' || 
+                        x.statusId === 100
+                    );
                     const latest = list[list.length - 1];
+
+                    const scoreEvents = list.filter(x => x.Score !== undefined || x.scoreSoccer !== undefined);
+                    const latestScoreEvent = scoreEvents.length > 0 ? scoreEvents[scoreEvents.length - 1] : latest;
+                    const score = latestScoreEvent.Score ?? latestScoreEvent.scoreSoccer;
+
                     setScores(prev => ({
                         ...prev,
                         [f.id]: {
-                            status: deriveStatus(latest.gameState, true),
+                            status: isFinalised ? 'resolved' : deriveStatus(
+                                latest.GameState ?? latest.gameState, 
+                                true, 
+                                latest.Action ?? latest.action, 
+                                latest.StatusId ?? latest.statusId
+                            ),
                             score: {
-                                home: latest.scoreSoccer?.Participant1.Total?.Goals ?? 0,
-                                away: latest.scoreSoccer?.Participant2.Total?.Goals ?? 0,
+                                home: score?.Participant1.Total?.Goals ?? 0,
+                                away: score?.Participant2.Total?.Goals ?? 0,
                             }
                         }
                     }));
@@ -43,7 +63,9 @@ export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken:
         Object.keys(streamsRef.current).forEach(idStr => {
             const id = Number(idStr);
             if (!activeIds.has(id)) {
-                streamsRef.current[id]?.abort();
+                const s = streamsRef.current[id];
+                s?.abort();
+                if (s?.pollInterval) clearInterval(s.pollInterval);
                 delete streamsRef.current[id];
             }
         });
@@ -53,29 +75,91 @@ export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken:
             if (streamsRef.current[f.id]) return; // Already streaming
 
             const startStream = (): (() => void) => {
+                const startPolling = () => {
+                    const control = streamsRef.current[f.id];
+                    if (control && !control.pollInterval) {
+                        console.log(`Starting polling fallback for fixture ${f.id}`);
+                        control.pollInterval = setInterval(async () => {
+                            try {
+                                const list = await fetchScoreUpdates(f.id, jwt, apiToken);
+                                if (!activeIds.has(f.id)) return;
+                                if (list.length > 0) {
+                                    const isFinalised = list.some(x => 
+                                        x.Action === 'game_finalised' || 
+                                        x.StatusId === 100 || 
+                                        x.action === 'game_finalised' || 
+                                        x.statusId === 100
+                                    );
+                                    const latest = list[list.length - 1];
+
+                                    const scoreEvents = list.filter(x => x.Score !== undefined || x.scoreSoccer !== undefined);
+                                    const latestScoreEvent = scoreEvents.length > 0 ? scoreEvents[scoreEvents.length - 1] : latest;
+                                    const score = latestScoreEvent.Score ?? latestScoreEvent.scoreSoccer;
+
+                                    setScores(prev => ({
+                                        ...prev,
+                                        [f.id]: {
+                                            status: isFinalised ? 'resolved' : deriveStatus(
+                                                latest.GameState ?? latest.gameState, 
+                                                true, 
+                                                latest.Action ?? latest.action, 
+                                                latest.StatusId ?? latest.statusId
+                                            ),
+                                            score: {
+                                                home: score?.Participant1.Total?.Goals ?? prev[f.id]?.score.home ?? 0,
+                                                away: score?.Participant2.Total?.Goals ?? prev[f.id]?.score.away ?? 0,
+                                            }
+                                        }
+                                    }));
+                                }
+                            } catch (err) {
+                                console.error(`Failed to poll score updates for ${f.id}:`, err);
+                            }
+                        }, 15000);
+                    }
+                };
+
                 const abort = streamScoreUpdates(
                     f.id,
                     jwt,
                     apiToken,
                     (payload) => {
+                        // Clear polling fallback if stream succeeds
+                        const control = streamsRef.current[f.id];
+                        if (control && control.pollInterval) {
+                            console.log(`Stream succeeded for fixture ${f.id}, clearing polling fallback`);
+                            clearInterval(control.pollInterval);
+                            control.pollInterval = null;
+                        }
                         const fixtureData = payload.data ?? payload;
-                        if (fixtureData && fixtureData.fixtureId === f.id) {
-                            const scoreSoccer = fixtureData.scoreSoccer;
-                            setScores(prev => ({
-                                ...prev,
-                                [f.id]: {
-                                    status: deriveStatus(fixtureData.gameState, true),
-                                    score: {
-                                        home: scoreSoccer?.Participant1?.Total?.Goals ?? prev[f.id]?.score.home ?? 0,
-                                        away: scoreSoccer?.Participant2?.Total?.Goals ?? prev[f.id]?.score.away ?? 0,
+                        if (fixtureData && (fixtureData.FixtureId === f.id || fixtureData.fixtureId === f.id)) {
+                            const score = fixtureData.Score ?? fixtureData.scoreSoccer;
+                            const gameState = fixtureData.GameState ?? fixtureData.gameState;
+                            const action = fixtureData.Action ?? fixtureData.action;
+                            const statusId = fixtureData.StatusId ?? fixtureData.statusId;
+
+                            const isFinalised = action === 'game_finalised' || statusId === 100;
+
+                            setScores(prev => {
+                                const current = prev[f.id];
+                                return {
+                                    ...prev,
+                                    [f.id]: {
+                                        status: (current?.status === 'resolved' || isFinalised) ? 'resolved' : deriveStatus(gameState, true, action, statusId),
+                                        score: {
+                                            home: score?.Participant1?.Total?.Goals ?? current?.score.home ?? 0,
+                                            away: score?.Participant2?.Total?.Goals ?? current?.score.away ?? 0,
+                                        }
                                     }
-                                }
-                            }));
+                                };
+                            });
                         }
                     },
                     (err) => {
-                        console.error(`Stream error for fixture ${f.id}:`, err);
-                        // Implement retry logic with exponential backoff if the fixture is still active
+                        console.error(`Stream error for fixture ${f.id}, starting polling fallback:`, err);
+                        startPolling();
+                        
+                        // Implement retry logic with backoff if the fixture is still active
                         if (activeIds.has(f.id) && streamsRef.current[f.id]) {
                             const current = streamsRef.current[f.id];
                             if (current.retryCount < 5) {
@@ -84,7 +168,7 @@ export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken:
                                     if (activeIds.has(f.id)) {
                                         current.abort = startStream();
                                     }
-                                }, 5000);
+                                }, 10000);
                             }
                         }
                     }
@@ -94,13 +178,17 @@ export function useLiveScores(fixtures: Fixture[], jwt: string | null, apiToken:
 
             streamsRef.current[f.id] = {
                 abort: startStream(),
-                retryCount: 0
+                retryCount: 0,
+                pollInterval: null
             };
         });
 
         // Cleanup on unmount or dependency updates
         return () => {
-            Object.values(streamsRef.current).forEach(s => s.abort());
+            Object.values(streamsRef.current).forEach(s => {
+                s.abort();
+                if (s.pollInterval) clearInterval(s.pollInterval);
+            });
             streamsRef.current = {};
         };
     }, [fixtures, jwt, apiToken]);

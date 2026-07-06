@@ -393,6 +393,84 @@
   .tp-right { position: static; }
 }
 
+@media (max-width: 768px) {
+  .trading-page {
+    padding: 16px 12px 24px;
+    gap: 16px;
+  }
+  .tp-match-header {
+    padding: 20px 16px;
+  }
+  .tpmh-teams {
+    flex-direction: column;
+    gap: 16px;
+    align-items: center;
+  }
+  .tpmh-team, .tpmh-team-right {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 6px;
+  }
+  .tpmh-team-right .tpmh-team-text-right {
+    text-align: center;
+  }
+  .tpmh-flag {
+    font-size: 36px;
+  }
+  .tpmh-name {
+    font-size: 16px;
+  }
+  .tpmh-center {
+    width: 100%;
+    padding: 8px 0;
+  }
+  .tpmh-score {
+    font-size: 26px;
+  }
+  .tpmh-info {
+    margin-top: 12px;
+    padding-top: 12px;
+    gap: 8px;
+    justify-content: center;
+  }
+}
+
+@media (max-width: 600px) {
+  .tp-price-cards {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+  .tp-price-card {
+    padding: 14px;
+  }
+  .tppc-val {
+    font-size: 22px;
+  }
+  .tplo-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .tplo-arbitrage {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  .tploa-badge {
+    align-self: flex-start;
+  }
+  .tploms-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 400px) {
+  .tploms-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* Live Bookmaker Odds */
 .tp-live-odds {
   padding: 20px;

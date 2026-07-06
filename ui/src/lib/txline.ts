@@ -52,8 +52,18 @@ export async function fetchAllWorldCupFixtures(
 
 
 export interface ScoreUpdate {
-    fixtureId: number;
-    gameState: string;
+    FixtureId?: number;
+    fixtureId?: number;
+    GameState?: string;
+    gameState?: string;
+    Action?: string;
+    action?: string;
+    StatusId?: number;
+    statusId?: number;
+    Score?: {
+        Participant1: { Total?: { Goals: number } };
+        Participant2: { Total?: { Goals: number } };
+    };
     scoreSoccer?: {
         Participant1: { Total?: { Goals: number } };
         Participant2: { Total?: { Goals: number } };
@@ -69,7 +79,24 @@ export async function fetchScoreUpdates(
     const res = await axios.get(`${TXLINE_API_ORIGIN[network]}/api/scores/updates/${fixtureId}`, {
         headers: { Authorization: `Bearer ${jwt}`, "X-Api-Token": apiToken },
     });
-    return res.data;
+    let data = res.data;
+    if (typeof data === "string") {
+        const list: ScoreUpdate[] = [];
+        const lines = data.split("\n");
+        for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith("data:")) {
+                try {
+                    const parsed = JSON.parse(trimmed.slice(5).trim());
+                    list.push(parsed);
+                } catch (e) {
+                    // ignore
+                }
+            }
+        }
+        return list;
+    }
+    return data;
 }
 
 export interface OddsUpdate {
@@ -171,7 +198,13 @@ export function streamScoreUpdates(
 const LIVE_STATES = new Set(['H1', 'HT', 'H2', 'ET1', 'ET2', 'P', 'PE']);
 const FINISHED_STATES = new Set(['F', 'END', 'WET', 'WPE', 'A', 'C']);
 
-export function deriveStatus(gameState: string | undefined, started: boolean): 'live' | 'upcoming' | 'resolved' {
+export function deriveStatus(
+    gameState: string | undefined, 
+    started: boolean,
+    action?: string,
+    statusId?: number
+): 'live' | 'upcoming' | 'resolved' {
+    if (action === 'game_finalised' || statusId === 100) return 'resolved';
     if (gameState && FINISHED_STATES.has(gameState)) return 'resolved';
     if (gameState && LIVE_STATES.has(gameState)) return 'live';
     return started ? 'live' : 'upcoming';
