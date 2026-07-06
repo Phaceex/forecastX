@@ -291,15 +291,24 @@
 
 @media (max-width: 480px) {
   .hero-stats {
-    padding: 12px;
+    display: grid !important;
+    grid-template-columns: 1fr 1fr !important;
+    gap: 16px 8px !important;
+    padding: 16px !important;
+    width: 100% !important;
+  }
+  .hs-divider {
+    display: none !important;
   }
   .hero-stat {
-    padding: 0 8px;
+    padding: 0 !important;
+    align-items: center;
+    text-align: center;
   }
   .hs-val {
-    font-size: 16px;
+    font-size: 18px !important;
   }
   .hs-label {
-    font-size: 9px;
+    font-size: 10px !important;
   }
 }

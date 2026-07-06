@@ -109,6 +109,7 @@
   align-items: center;
   gap: 12px;
   margin-left: auto;
+  flex-shrink: 0;
 }
 
 .balance-chips {
@@ -152,6 +153,12 @@
   border: none !important;
   box-shadow: 0 4px 15px rgba(37, 99, 235, 0.35) !important;
   transition: all 0.15s ease !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 8px !important;
 }
 
 .wallet-adapter-button:hover {
@@ -243,3 +250,22 @@
     letter-spacing: 0.2px;
   }
 }
+
+@media (max-width: 480px) {
+  .navbar-inner {
+    padding: 0 12px;
+  }
+  .logo-tag {
+    display: none !important;
+  }
+  .logo-text {
+    font-size: 16px;
+  }
+  .wallet-btn,
+  .wallet-adapter-button {
+    font-size: 11px !important;
+    padding: 0 10px !important;
+    height: 32px !important;
+  }
+}
+
