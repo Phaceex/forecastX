@@ -178,7 +178,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
-import { getAssociatedTokenAddressSync } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, AccountLayout } from '@solana/spl-token';
 import { PublicKey } from '@solana/web3.js';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
@@ -211,35 +211,52 @@ const PortfolioPage: React.FC<PortfolioPageProps> = ({ markets }) => {
     setLoading(true);
     const pos: Position[] = [];
 
-    const sol = await connection.getBalance(publicKey);
-    setSolBalance(sol / 1e9);
+    try {
+      const sol = await connection.getBalance(publicKey);
+      setSolBalance(sol / 1e9);
+    } catch {
+      setSolBalance(0);
+    }
 
     try {
       const ua = getAssociatedTokenAddressSync(COLLATERAL_MINT_PK, publicKey);
-      const ub = await connection.getTokenAccountBalance(ua);
-      setUsdcBalance(Number(ub.value.uiAmount) || 0);
-    } catch { setUsdcBalance(0); }
+      const keys: PublicKey[] = [ua];
+      const marketPdas: { market: MarketInfo; yesAta: PublicKey; noAta: PublicKey }[] = [];
 
-    for (const market of markets) {
-      if (!market.exists) continue;
-
-      let yesBalance = 0, noBalance = 0;
-
-      try {
-        const ya = getAssociatedTokenAddressSync(new PublicKey(market.yesMintPda), publicKey);
-        const yb = await connection.getTokenAccountBalance(ya);
-        yesBalance = Number(yb.value.uiAmount) || 0;
-      } catch { }
-
-      try {
-        const na = getAssociatedTokenAddressSync(new PublicKey(market.noMintPda), publicKey);
-        const nb = await connection.getTokenAccountBalance(na);
-        noBalance = Number(nb.value.uiAmount) || 0;
-      } catch { }
-
-      if (yesBalance > 0 || noBalance > 0) {
-        pos.push({ market, yesBalance, noBalance });
+      for (const market of markets) {
+        if (!market.exists) continue;
+        const yesAta = getAssociatedTokenAddressSync(new PublicKey(market.yesMintPda), publicKey);
+        const noAta = getAssociatedTokenAddressSync(new PublicKey(market.noMintPda), publicKey);
+        keys.push(yesAta, noAta);
+        marketPdas.push({ market, yesAta, noAta });
       }
+
+      const infos = await connection.getMultipleAccountsInfo(keys);
+
+      const parseBalance = (info: any) => {
+        if (!info || info.data.length !== 165) return 0;
+        try {
+          const decoded = AccountLayout.decode(info.data);
+          return Number(decoded.amount) / 1_000_000;
+        } catch {
+          return 0;
+        }
+      };
+
+      setUsdcBalance(parseBalance(infos[0]));
+
+      for (let i = 0; i < marketPdas.length; i++) {
+        const { market } = marketPdas[i];
+        const yesBalance = parseBalance(infos[1 + 2 * i]);
+        const noBalance = parseBalance(infos[1 + 2 * i + 1]);
+
+        if (yesBalance > 0 || noBalance > 0) {
+          pos.push({ market, yesBalance, noBalance });
+        }
+      }
+    } catch (e) {
+      console.error('Failed to fetch portfolio balances', e);
+      setUsdcBalance(0);
     }
 
     setPositions(pos);

@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction, AccountLayout } from '@solana/spl-token';
 import * as anchor from '@coral-xyz/anchor';
 import { BN } from '@coral-xyz/anchor';
 import { motion } from 'framer-motion';
@@ -93,19 +93,30 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
     if (!pdas || !publicKey) return;
     try {
       const ua = getAssociatedTokenAddressSync(COLLATERAL_MINT_PK, publicKey);
-      const ub = await connection.getTokenAccountBalance(ua);
-      setUsdcBalance(Number(ub.value.uiAmount) || 0);
-    } catch { setUsdcBalance(0); }
-    try {
       const ya = getAssociatedTokenAddressSync(pdas.yesMint, publicKey);
-      const yb = await connection.getTokenAccountBalance(ya);
-      setYesBalance(Number(yb.value.uiAmount) || 0);
-    } catch { setYesBalance(0); }
-    try {
       const na = getAssociatedTokenAddressSync(pdas.noMint, publicKey);
-      const nb = await connection.getTokenAccountBalance(na);
-      setNoBalance(Number(nb.value.uiAmount) || 0);
-    } catch { setNoBalance(0); }
+
+      const infos = await connection.getMultipleAccountsInfo([ua, ya, na]);
+
+      const parseBalance = (info: any) => {
+        if (!info || info.data.length !== 165) return 0;
+        try {
+          const decoded = AccountLayout.decode(info.data);
+          return Number(decoded.amount) / 1_000_000;
+        } catch {
+          return 0;
+        }
+      };
+
+      setUsdcBalance(parseBalance(infos[0]));
+      setYesBalance(parseBalance(infos[1]));
+      setNoBalance(parseBalance(infos[2]));
+    } catch (e) {
+      console.error('Failed to refresh trading page state', e);
+      setUsdcBalance(0);
+      setYesBalance(0);
+      setNoBalance(0);
+    }
   }, [connection, pdas, publicKey]);
 
   useEffect(() => { refreshState(); const iv = setInterval(refreshState, 15000); return () => clearInterval(iv); }, [refreshState]);
