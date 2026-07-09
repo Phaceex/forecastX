@@ -200,7 +200,7 @@ import React, { useState, useEffect } from 'react';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, ASSOCIATED_TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
 import * as anchor from '@coral-xyz/anchor';
 import { BN } from '@coral-xyz/anchor';
 import { motion } from 'framer-motion';
@@ -239,9 +239,10 @@ const LiquidityPage: React.FC<LiquidityPageProps> = ({ markets }) => {
 
   const handleSubmit = async () => {
     if (!publicKey || !amount || !selectedMarket) return;
-    setLoading(true); setErr(''); setMsg('Sending transaction...'); setTxSig('');
+    setLoading(true); setErr(''); setMsg('Checking token accounts...'); setTxSig('');
     try {
       const program = getProgram();
+      if (!program) throw new Error("Wallet not connected or program not initialized");
       const market = new PublicKey(selectedMarket.marketPda);
       const pool = new PublicKey(selectedMarket.poolPda);
       const lpMint = new PublicKey(selectedMarket.lpMintPda);
@@ -257,28 +258,103 @@ const LiquidityPage: React.FC<LiquidityPageProps> = ({ markets }) => {
       const yesAta = getAssociatedTokenAddressSync(yesMint, publicKey);
       const noAta = getAssociatedTokenAddressSync(noMint, publicKey);
 
+      const preIxs = [];
+
+      // Check usdcAta (needed for init and add)
+      if (liqAction === 'init' || liqAction === 'add') {
+        const usdcInfo = await connection.getAccountInfo(usdcAta);
+        if (!usdcInfo) {
+          setMsg('Preparing USDC token account...');
+          preIxs.push(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              usdcAta,
+              publicKey,
+              COLLATERAL_MINT_PK
+            )
+          );
+        }
+      }
+
+      // Check lpAta (needed for add)
+      if (liqAction === 'add') {
+        const lpInfo = await connection.getAccountInfo(lpAta);
+        if (!lpInfo) {
+          setMsg('Preparing LP token account...');
+          preIxs.push(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              lpAta,
+              publicKey,
+              lpMint
+            )
+          );
+        }
+      }
+
+      // Check yesAta and noAta (needed for remove)
+      if (liqAction === 'remove') {
+        const yesInfo = await connection.getAccountInfo(yesAta);
+        if (!yesInfo) {
+          setMsg('Preparing YES token account...');
+          preIxs.push(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              yesAta,
+              publicKey,
+              yesMint
+            )
+          );
+        }
+        const noInfo = await connection.getAccountInfo(noAta);
+        if (!noInfo) {
+          setMsg('Preparing NO token account...');
+          preIxs.push(
+            createAssociatedTokenAccountInstruction(
+              publicKey,
+              noAta,
+              publicKey,
+              noMint
+            )
+          );
+        }
+      }
+
+      setMsg('Sending transaction...');
       let sig: string;
       if (liqAction === 'init') {
-        sig = await program.methods.initPool(amtBN).accounts({
+        let builder = program.methods.initPool(amtBN).accounts({
           market, pool, collateralMint: COLLATERAL_MINT_PK,
           lpMint, yesMint, noMint,
           vault, yesReserve, noReserve,
           userCollateral: usdcAta, userLp: lpAta, authority: publicKey,
           systemProgram: SystemProgram.programId, tokenProgram: TOKEN_PROGRAM_ID,
           associatedTokenProgram: ASSOCIATED_TOKEN_PROGRAM_ID, rent: SYSVAR_RENT_PUBKEY,
-        }).rpc();
+        });
+        if (preIxs.length > 0) {
+          builder = builder.preInstructions(preIxs);
+        }
+        sig = await builder.rpc();
       } else if (liqAction === 'add') {
-        sig = await program.methods.addLiquidity(amtBN).accounts({
+        let builder = program.methods.addLiquidity(amtBN).accounts({
           market, pool, yesMint, noMint,
           lpMint, vault, yesReserve, noReserve,
           userCollateral: usdcAta, userLp: lpAta, authority: publicKey, tokenProgram: TOKEN_PROGRAM_ID,
-        }).rpc();
+        });
+        if (preIxs.length > 0) {
+          builder = builder.preInstructions(preIxs);
+        }
+        sig = await builder.rpc();
       } else {
-        sig = await program.methods.removeLiquidity(amtBN).accounts({
+        let builder = program.methods.removeLiquidity(amtBN).accounts({
           market, pool, lpMint,
           yesReserve, noReserve,
           userLp: lpAta, userYes: yesAta, userNo: noAta, authority: publicKey, tokenProgram: TOKEN_PROGRAM_ID,
-        }).rpc();
+        });
+        if (preIxs.length > 0) {
+          builder = builder.preInstructions(preIxs);
+        }
+        sig = await builder.rpc();
       }
       setTxSig(sig); setMsg(`✓ ${liqAction === 'init' ? 'Pool initialized' : liqAction === 'add' ? 'Liquidity added' : 'Liquidity removed'}!`);
       setAmount('');

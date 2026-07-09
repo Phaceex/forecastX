@@ -3,7 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { useWallet, useConnection } from '@solana/wallet-adapter-react';
 import { WalletMultiButton } from '@solana/wallet-adapter-react-ui';
 import { PublicKey, SystemProgram, SYSVAR_RENT_PUBKEY } from '@solana/web3.js';
-import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID } from '@solana/spl-token';
+import { getAssociatedTokenAddressSync, TOKEN_PROGRAM_ID, createAssociatedTokenAccountInstruction } from '@solana/spl-token';
 import * as anchor from '@coral-xyz/anchor';
 import { BN } from '@coral-xyz/anchor';
 import { motion } from 'framer-motion';
@@ -133,20 +133,84 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
 
   const handleTrade = async () => {
     if (!fixture || !pdas || !publicKey || !amount) return;
-    setLoading(true); setTxErr(''); setTxMsg('Sending transaction...');
+    setLoading(true); setTxErr(''); setTxMsg('Checking token accounts...');
     try {
       const program = getProgram();
       const usdcAta = getAssociatedTokenAddressSync(COLLATERAL_MINT_PK, publicKey);
       const yesAta = getAssociatedTokenAddressSync(pdas.yesMint, publicKey);
       const noAta = getAssociatedTokenAddressSync(pdas.noMint, publicKey);
+
+      const preIxs = [];
+
+      // Check if USDC ATA exists
+      const usdcAccountInfo = await connection.getAccountInfo(usdcAta);
+      if (!usdcAccountInfo) {
+        setTxMsg('Preparing USDC token account...');
+        preIxs.push(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            usdcAta,
+            publicKey,
+            COLLATERAL_MINT_PK
+          )
+        );
+      }
+
+      // Check if YES ATA exists
+      const yesAccountInfo = await connection.getAccountInfo(yesAta);
+      if (!yesAccountInfo) {
+        setTxMsg('Preparing YES token account...');
+        preIxs.push(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            yesAta,
+            publicKey,
+            pdas.yesMint
+          )
+        );
+      }
+
+      // Check if NO ATA exists
+      const noAccountInfo = await connection.getAccountInfo(noAta);
+      if (!noAccountInfo) {
+        setTxMsg('Preparing NO token account...');
+        preIxs.push(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            noAta,
+            publicKey,
+            pdas.noMint
+          )
+        );
+      }
+
+      setTxMsg('Sending transaction...');
       const amtLamports = new BN(Math.round(Number(amount) * 1e6));
       const minOut = new BN(Math.round(Number(amount) * 1e6 * (1 - slippage / 100) * 0.8));
       const swapTypeMap = { 'buy-yes': 0, 'buy-no': 1, 'sell-yes': 2, 'sell-no': 3 };
       const swapType = swapTypeMap[tab];
 
-      const sig = await program.methods.swap(swapType, amtLamports, minOut)
-        .accounts({ market: pdas.market, pool: pdas.pool, yesMint: pdas.yesMint, noMint: pdas.noMint, vault: pdas.vault, yesReserve: pdas.yesReserve, noReserve: pdas.noReserve, userCollateral: usdcAta, userYes: yesAta, userNo: noAta, authority: publicKey, tokenProgram: TOKEN_PROGRAM_ID })
-        .rpc();
+      let methodBuilder = program.methods.swap(swapType, amtLamports, minOut)
+        .accounts({
+          market: pdas.market,
+          pool: pdas.pool,
+          yesMint: pdas.yesMint,
+          noMint: pdas.noMint,
+          vault: pdas.vault,
+          yesReserve: pdas.yesReserve,
+          noReserve: pdas.noReserve,
+          userCollateral: usdcAta,
+          userYes: yesAta,
+          userNo: noAta,
+          authority: publicKey,
+          tokenProgram: TOKEN_PROGRAM_ID
+        });
+
+      if (preIxs.length > 0) {
+        methodBuilder = methodBuilder.preInstructions(preIxs);
+      }
+
+      const sig = await methodBuilder.rpc();
       setTxSig(sig); setTxMsg(`✓ Swap confirmed!`);
       await refreshState();
       setAmount('');
@@ -156,7 +220,7 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
 
   const handleRedeem = async () => {
     if (!fixture || !pdas || !publicKey) return;
-    setLoading(true); setTxErr(''); setTxMsg('Redeeming tokens...');
+    setLoading(true); setTxErr(''); setTxMsg('Checking token accounts...');
     try {
       const program = getProgram();
       const usdcAta = getAssociatedTokenAddressSync(COLLATERAL_MINT_PK, publicKey);
@@ -164,9 +228,30 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
       const noAta = getAssociatedTokenAddressSync(pdas.noMint, publicKey);
       const redeemBal = market?.winningOutcome ?? 0 ? yesBalance : noBalance;
       const redeemAta = market?.winningOutcome ?? 0 ? yesAta : noAta;
-      const sig = await program.methods.redeem(new BN(Math.round(redeemBal * 1e6)))
-        .accounts({ market: pdas.market, yesMint: pdas.yesMint, noMint: pdas.noMint, vault: pdas.vault, userWinningTokens: redeemAta, userCollateral: usdcAta, authority: publicKey, tokenProgram: TOKEN_PROGRAM_ID })
-        .rpc();
+
+      const preIxs = [];
+      const usdcAccountInfo = await connection.getAccountInfo(usdcAta);
+      if (!usdcAccountInfo) {
+        setTxMsg('Preparing USDC token account...');
+        preIxs.push(
+          createAssociatedTokenAccountInstruction(
+            publicKey,
+            usdcAta,
+            publicKey,
+            COLLATERAL_MINT_PK
+          )
+        );
+      }
+
+      setTxMsg('Sending transaction...');
+      let methodBuilder = program.methods.redeem(new BN(Math.round(redeemBal * 1e6)))
+        .accounts({ market: pdas.market, yesMint: pdas.yesMint, noMint: pdas.noMint, vault: pdas.vault, userWinningTokens: redeemAta, userCollateral: usdcAta, authority: publicKey, tokenProgram: TOKEN_PROGRAM_ID });
+
+      if (preIxs.length > 0) {
+        methodBuilder = methodBuilder.preInstructions(preIxs);
+      }
+
+      const sig = await methodBuilder.rpc();
       setTxSig(sig); setTxMsg('✓ Redeemed successfully!');
       await refreshState();
     } catch (e: any) { setTxErr(e?.message || String(e)); setTxMsg(''); }
@@ -228,7 +313,7 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
             <div className="tpmh-info">
               <span>📍 {fixture.venue}</span>
               <span>•</span>
-              <span>Stat: <b>{fixture.statName}</b></span>
+              <span>Stat: <b>{fixture.statName} (Over/Under 0.5 Goals)</b></span>
               <span>•</span>
               <span>Fixture ID: <b>{fixture.id}</b></span>
             </div>
@@ -237,9 +322,9 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
           {/* Price cards */}
           <div className="tp-price-cards">
             <div className="tp-price-card yes">
-              <div className="tppc-label">YES Price</div>
+              <div className="tppc-label">YES Price (&gt; 0 Goals)</div>
               <div className="tppc-val">{yesPercent}¢</div>
-              <div className="tppc-sub">Implied probability</div>
+              <div className="tppc-sub">At least 1 goal is scored</div>
             </div>
             <div className="tp-price-card stats">
               <div className="tppc-label">Liquidity</div>
@@ -247,9 +332,9 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
               <div className="tppc-sub">Total pool depth</div>
             </div>
             <div className="tp-price-card no">
-              <div className="tppc-label">NO Price</div>
+              <div className="tppc-label">NO Price (0 Goals)</div>
               <div className="tppc-val">{noPercent}¢</div>
-              <div className="tppc-sub">Implied probability</div>
+              <div className="tppc-sub">Match ends 0 - 0</div>
             </div>
           </div>
 
@@ -439,6 +524,13 @@ const TradingPage: React.FC<TradingPageProps> = ({ markets }) => {
                       {l}
                     </button>
                   ))}
+                </div>
+
+                <div className="tp-swap-desc" style={{ fontSize: '11px', color: '#94b4d4', marginTop: '6px', textAlign: 'center' }}>
+                  {tab === 'buy-yes' && '🟢 Predicts at least 1 goal is scored (> 0)'}
+                  {tab === 'buy-no' && '🔴 Predicts match ends 0 - 0 (0 goals)'}
+                  {tab === 'sell-yes' && '⬆ Sell YES tokens (at least 1 goal)'}
+                  {tab === 'sell-no' && '⬇ Sell NO tokens (0 goals)'}
                 </div>
 
                 {/* Amount input */}

@@ -20,6 +20,14 @@ const FaucetPage: React.FC = () => {
   const [creating, setCreating] = useState(false);
   const [txSig, setTxSig] = useState('');
   const [err, setErr] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const checkATA = async () => {
     if (!publicKey) return;
@@ -86,9 +94,18 @@ const FaucetPage: React.FC = () => {
 
               {ataAddress && (
                 <div className="faucet-ata-info">
-                  <div className="faucet-info-row">
+                  <div className="faucet-info-row" style={{ flexDirection: 'column', alignItems: 'flex-start', gap: '4px' }}>
                     <span className="faucet-info-label">Your ATA Address</span>
-                    <span className="faucet-info-val mono">{ataAddress.slice(0,16)}…{ataAddress.slice(-8)}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', width: '100%', gap: '8px' }}>
+                      <span className="faucet-info-val mono" style={{ wordBreak: 'break-all', fontSize: '11px', userSelect: 'all' }}>{ataAddress}</span>
+                      <button 
+                        className="btn btn-ghost btn-sm" 
+                        onClick={() => copyToClipboard(ataAddress)}
+                        style={{ padding: '2px 8px', height: 'auto', minHeight: 0, fontSize: '10px' }}
+                      >
+                        {copied ? 'Copied' : 'Copy'}
+                      </button>
+                    </div>
                   </div>
                   <div className="faucet-info-row">
                     <span className="faucet-info-label">Status</span>
@@ -122,11 +139,27 @@ const FaucetPage: React.FC = () => {
             The mint authority is the project's devnet test wallet.
           </p>
           <div className="faucet-code-block">
-            <div className="faucet-code-label">Mint 1,000 USDC to your ATA</div>
+            <div className="faucet-code-label" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span>Mint 1,000 USDC to your ATA</span>
+              {ataAddress && (
+                <button 
+                  className="btn btn-link btn-xs" 
+                  onClick={() => {
+                    const code = `spl-token mint ${COLLATERAL_MINT} 1000000 ${ataAddress}`;
+                    navigator.clipboard.writeText(code);
+                    setCopiedCode(true);
+                    setTimeout(() => setCopiedCode(false), 2000);
+                  }}
+                  style={{ textDecoration: 'none', fontSize: '10px', padding: 0 }}
+                >
+                  {copiedCode ? 'Copied Command!' : 'Copy Command'}
+                </button>
+              )}
+            </div>
             <pre className="faucet-code">{`spl-token mint \\
   ${COLLATERAL_MINT} \\
   1000000 \\
-  <YOUR_ATA_ADDRESS>`}</pre>
+  ${ataAddress || '<YOUR_ATA_ADDRESS>'}`}</pre>
           </div>
           <div className="faucet-code-block">
             <div className="faucet-code-label">Check your balance</div>

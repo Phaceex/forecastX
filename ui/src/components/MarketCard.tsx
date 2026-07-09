@@ -77,7 +77,7 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, index }) => {
       {/* Prices */}
       <div className="mc-prices">
         <div className="mc-price-yes">
-          <span className="mc-price-label">YES</span>
+          <span className="mc-price-label">YES (&gt; 0 Goals)</span>
           <span className="mc-price-val yes">{yesPercent}¢</span>
           <div className="mc-prob-bar">
             <div className="mc-prob-fill yes" style={{ width: `${yesPercent}%` }} />
@@ -88,7 +88,7 @@ const MarketCard: React.FC<MarketCardProps> = ({ market, index }) => {
             <div className="mc-prob-fill no" style={{ width: `${noPercent}%` }} />
           </div>
           <span className="mc-price-val no">{noPercent}¢</span>
-          <span className="mc-price-label">NO</span>
+          <span className="mc-price-label">NO (0 Goals)</span>
         </div>
       </div>
 
