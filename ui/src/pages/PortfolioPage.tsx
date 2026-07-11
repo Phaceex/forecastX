@@ -345,7 +345,7 @@ const PortfolioPage: React.FC<PortfolioPageProps> = ({ markets }) => {
                     <div className="pfp-token no">
                       <span>NO</span>
                       <span className="pfp-amount">{pos.noBalance.toFixed(4)}</span>
-                      {pos.market.resolved && pos.market.winningOutcome === 0 && <span className="tag tag-green">Winner!</span>}
+                      {pos.market.resolved && pos.market.winningOutcome === 2 && <span className="tag tag-green">Winner!</span>}
                     </div>
                   )}
                 </div>

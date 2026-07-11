@@ -214,6 +214,9 @@ const MarketsPage: React.FC<MarketsPageProps> = ({ markets, loading, refresh }) 
 
   const filtered = markets.filter(m => {
     if (filter === 'All') return true;
+    if (filter === 'Resolved') {
+      return m.resolved || m.fixture.status.toLowerCase() === 'resolved';
+    }
     return m.fixture.status.toLowerCase() === filter.toLowerCase();
   });
 
